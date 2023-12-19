@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
-const DataProvider = require('./dataProvider');
-const Logger = require('./Logger');
+const MongoDataProvider = require('../db/MongoDataProvider');
+const Logger = require('../core/Logger');
 
 const MessageType = {
     JOIN_ROOM: 'joinRoom',
@@ -18,7 +18,7 @@ const MessageType = {
 class ChatController {
     constructor(server, logger = Logger) {
         this.wss = new WebSocket.Server(server);
-        this.dataProvider = DataProvider;
+        this.dataProvider = MongoDataProvider;
         this.clients = new Map();
         this.logger = logger;
 
