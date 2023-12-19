@@ -1,4 +1,3 @@
-// dataProvider.js
 
 class DataProvider {
     constructor() {
@@ -15,17 +14,15 @@ class DataProvider {
         };
 
         this.messages = {
-            1: [{ author: 'User1', text: 'Hello' }],
-            2: [{ author: 'User1', text: 'Hello' }]
+            1: [{ author: 'User1', text: 'Hello 1', date: '2023-12-19T14:15:13.599Z', id: 1 }],
+            2: [{ author: 'User1', text: 'Hello 2', date: '2023-12-19T14:15:13.599Z', id: 1 }]
         };
     }
 
-    // Получение списка комнат
     getRooms() {
         return this.rooms;
     }
 
-    // Добавление пользователя в комнату
     joinRoom(roomId, userId) {
         const room = this.rooms.find(r => r.id === roomId);
         if (!room) {
@@ -52,7 +49,6 @@ class DataProvider {
         return newRoom;
     }
 
-    // Установка нового названия комнаты
     setRoomName(roomId, newName) {
         const room = this.rooms.find(r => r.id === roomId);
         if (!room) {
@@ -61,7 +57,6 @@ class DataProvider {
         room.name = newName;
     }
 
-    // Пользователь покидает комнату
     leaveRoom(roomId, userId) {
         const room = this.rooms.find(r => r.id === roomId);
         if (!room || !this.roomUsers[roomId]) {
@@ -81,21 +76,18 @@ class DataProvider {
         }
     }
 
-    // Получение пользователей комнаты
     getRoomUsers(roomId) {
         return this.roomUsers[roomId] || [];
     }
 
-    // Отправка сообщения в комнату
     sendMessage(roomId, userId, text) {
         if (!this.messages[roomId]) {
             this.messages[roomId] = [];
         }
-        const message = { author: userId, text };
+        const message = { author: userId, text, date: new Date(), id: this.messages[roomId].length + 1};
         this.messages[roomId].push(message);
     }
 
-    // Получение сообщений комнаты
     getMessages(roomId) {
         return this.messages[roomId] || [];
     }
