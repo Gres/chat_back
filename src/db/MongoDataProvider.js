@@ -4,31 +4,69 @@ const RoomMembership = require('../models/RoomMembership');
 const Message = require('../models/Message');
 
 class MongoDataProvider {
+
+    async getUserByToken(token) {
+        let user = JSON.parse(atob(token.split('.')[1]));
+        let email = user.email
+        let username = user['cognito:username']
+        return this.getUser(email, username);
+    }
+    async getActiveRoom(userId) {
+        const membership = await RoomMembership.findOne({ userId }).populate('roomId');
+        if (!membership) {
+            return null;
+        }
+        return membership.roomId;
+    }
     async getRooms() {
-        return Room.find();
+        const roomsWithCounts = await Room.aggregate([
+
+            {
+                $lookup: {
+                    from: 'roommemberships',
+                    localField: '_id',
+                    foreignField: 'roomId',
+                    as: 'memberships'
+                }
+            },
+
+            {
+                $addFields: {
+                    players: { $size: '$memberships' },
+                    id: '$_id'
+                }
+            },
+            {
+                $project: {
+                    memberships: 0
+                }
+            }
+        ]);
+
+        return roomsWithCounts;
     }
 
     async joinRoom(roomId, userId) {
-        // Проверяем, существует ли комната
+        // Проверяем, находится ли пользователь уже в какой-либо комнате
+        const existingMembership = await RoomMembership.findOne({ userId });
+        if (existingMembership) {
+            throw new Error('User is already in a room');
+        }
+
         const room = await Room.findById(roomId);
         if (!room) {
             throw new Error('Room not found');
         }
 
-        // Проверяем, не превышен ли лимит пользователей в комнате
         const membersCount = await RoomMembership.countDocuments({ roomId });
         if (membersCount >= 10) {
             throw new Error('Room is full');
         }
-        const user = await this.getUser(userId)
-        // Добавляем пользователя в комнату
-        const membership = new RoomMembership({ roomId, userId:user._id });
-        await membership.save();
 
-        // Увеличиваем количество игроков в комнате
-        room.players += 1;
-        await room.save();
+        const membership = new RoomMembership({ roomId, userId });
+        await membership.save();
     }
+
     async getUser(email, username) {
         const existingUser = await User.findOne({ email });
         if (existingUser) {
@@ -36,18 +74,13 @@ class MongoDataProvider {
             return existingUser
         }
 
-        const newUser = new User({ email, username:email });
+        const newUser = new User({ email, username });
         await newUser.save();
         return newUser;
     }
     async createRoom(name, userId) {
-        const user = await this.getUser(userId)
-
-        const newRoom = new Room({ name, players: 1, authorId: user._id });
+        const newRoom = new Room({ name, authorId: userId });
         await newRoom.save();
-
-        const membership = new RoomMembership({ roomId: newRoom._id, userId:user._id });
-        await membership.save();
 
         return newRoom;
     }
@@ -63,20 +96,23 @@ class MongoDataProvider {
     }
 
     async leaveRoom(roomId, userId) {
-        let user = await this.getUser(userId)
-        const membership = await RoomMembership.findOne({ roomId, userId: user._id });
-        if (!membership) {
-            throw new Error('User not found in room');
+        const membership = await RoomMembership.findOne({ roomId, userId: userId });
+        if (membership) {
+            await membership.remove();
         }
 
-        await membership.remove();
-
-        const room = await Room.findById(roomId);
-        room.players -= 1;
-        if (room.players === 0) {
-            await room.remove();
-        } else {
-            await room.save();
+        const countMembers = await RoomMembership.countDocuments({ roomId });
+        if (countMembers === 0) {
+            setTimeout(async () => {
+                const recheckCount = await RoomMembership.countDocuments({ roomId });
+                if (recheckCount === 0) {
+                    const room = await Room.findById(roomId);
+                    if (room) {
+                        await room.remove();
+                        console.log(`Room ${roomId} deleted`);
+                    }
+                }
+            }, 20000);
         }
     }
 
@@ -86,8 +122,7 @@ class MongoDataProvider {
     }
 
     async sendMessage(roomId, userId, text) {
-        const user = await this.getUser(userId)
-        const message = new Message({ roomId, author: user._id, text });
+        const message = new Message({ roomId, author: userId, text });
         await message.save();
     }
 

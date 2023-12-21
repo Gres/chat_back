@@ -3,6 +3,7 @@ const MongoDataProvider = require('../db/MongoDataProvider');
 const Logger = require('../core/Logger');
 
 const MessageType = {
+    GET_ACTIVE_ROOM: 'getActiveRoom',
     JOIN_ROOM: 'joinRoom',
     LEAVE_ROOM: 'leaveRoom',
     CREATE_ROOM: 'createRoom',
@@ -40,7 +41,28 @@ class ChatController {
             this.logger.log('Invalid message format', 'error', '🚫');
             return;
         }
+        let token = data.token;
+        if (!token) {
+            this.sendMessage(ws, MessageType.ERROR, { error: 'Token not provided' }, MessageType.ERROR);
+            this.logger.log('Token not provided', 'error', '🚫');
+            return;
+        } else {
+            try {
+                let user = await this.dataProvider.getUserByToken(token);
+                if (!user) {
+                    this.sendMessage(ws, MessageType.ERROR, { error: 'Invalid token' }, MessageType.ERROR);
+                    this.logger.log('Invalid token', 'error', '🚫');
+                    return;
+                } else {
+                    data.userId = user._id;
+                }
+            } catch (error) {
+                this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.ERROR);
+                this.logger.log(`Get user by token failed: ${error.message}`, 'error', '🚫');
+                return;
+            }
 
+        }
         switch (data.type) {
             case MessageType.JOIN_ROOM:
                 await this.joinRoom(ws, data);
@@ -60,6 +82,9 @@ class ChatController {
             case MessageType.SET_ROOM_NAME:
                 await this.setRoomName(ws, data);
                 break;
+            case MessageType.GET_ACTIVE_ROOM:
+                await this.getActiveRoom(ws, data);
+                break;
             case MessageType.GET_MESSAGES:
                 await this.getMessages(ws, data);
                 break;
@@ -74,6 +99,9 @@ class ChatController {
 
     async joinRoom(ws, data) {
         try {
+            if(this.clients.get(ws).roomId){
+                await this.leaveRoom(ws, {roomId: this.clients.get(ws).roomId, userId: data.userId})
+            }
             await this.dataProvider.joinRoom(data.roomId, data.userId);
             this.clients.set(ws, { userId: data.userId, roomId: data.roomId });
             this.clients.forEach((clientData, client) => {
@@ -81,6 +109,7 @@ class ChatController {
                     this.sendMessage(client, MessageType.RESPONSE, { success: true,message: 'Joined room', data:{roomId: clientData.roomId, userId: data.userId} }, MessageType.JOIN_ROOM);
                 }
             });
+            await this.getActiveRoom(ws, data);
             this.logger.log(`User ${data.userId} joined room ${data.roomId}`, 'info', '🚪');
         } catch (error) {
             this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.JOIN_ROOM);
@@ -113,7 +142,10 @@ class ChatController {
                     this.sendMessage(client, MessageType.RESPONSE, { success: true, data: newRoom }, MessageType.CREATE_ROOM);
                 }
             });
+
             this.logger.log(`Room ${data.name} created by user ${data.userId}`, 'info', '🏗️');
+            await this.joinRoom(ws, {roomId: newRoom._id, userId: data.userId});
+
         } catch (error) {
             this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.CREATE_ROOM);
             this.logger.log(`Create room failed: ${error.message}`, 'error', '🚫');
@@ -164,6 +196,17 @@ class ChatController {
         }
     }
 
+    async getActiveRoom(ws, data) {
+        try {
+            const room = await this.dataProvider.getActiveRoom(data.userId);
+            this.sendMessage(ws, MessageType.RESPONSE, { success: true, data: {room} }, MessageType.GET_ACTIVE_ROOM);
+            this.logger.log(`Requested active room for user ${data.userId}`, 'info', '🏠');
+        } catch (error) {
+            this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.SET_ROOM_NAME);
+            this.logger.log(`Set room name failed: ${error.message}`, 'error', '🚫');
+        }
+    }
+
     async getMessages(ws, data) {
         try {
             const messages = await this.dataProvider.getMessages(data.roomId);
@@ -188,21 +231,7 @@ class ChatController {
 
     async handleClose(ws) {
         const clientInfo = this.clients.get(ws);
-        if (clientInfo && clientInfo.roomId) {
-            try {
-                await this.dataProvider.leaveRoom(clientInfo.roomId, clientInfo.userId);
-
-                this.wss.clients.forEach(client => {
-                    if (client !== ws && client.readyState === WebSocket.OPEN && this.clients.get(client).roomId === clientInfo.roomId) {
-                        this.sendMessage(client, MessageType.RESPONSE, { success: true, message: 'User left room', data:{roomId: clientInfo.roomId, userId: clientInfo.userId}  }, MessageType.LEAVE_ROOM);
-                    }
-                });
-
-                this.logger.log(`User ${clientInfo.userId} left room ${clientInfo.roomId} on disconnect`, 'info', '🚪');
-            } catch (error) {
-                this.logger.log(`Error handling leave room on disconnect: ${error.message}`, 'error', '🚫');
-            }
-        }
+        await this.leaveRoom(ws, clientInfo);
 
         this.clients.delete(ws);
         this.logger.log('Connection closed', 'info', '🔌');

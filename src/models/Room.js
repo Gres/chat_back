@@ -1,11 +1,10 @@
 const mongoose = require('mongoose');
 
 const roomSchema = new mongoose.Schema({
-
     name: { type: String, required: true },
-    players: { type: Number, default: 0 },
     authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 });
+
 roomSchema.set('toJSON', {
     virtuals: true,
     versionKey: false,
@@ -19,4 +18,5 @@ roomSchema.set('toJSON', {
 roomSchema.set('toObject', {
     virtuals: true
 });
+roomSchema.index({ authorId: 1 });
 module.exports = mongoose.model('Room', roomSchema);
