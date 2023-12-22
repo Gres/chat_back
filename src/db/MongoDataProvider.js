@@ -4,12 +4,14 @@ const RoomMembership = require('../models/RoomMembership');
 const Message = require('../models/Message');
 
 class MongoDataProvider {
-
     async getUserByToken(token) {
         let user = JSON.parse(atob(token.split('.')[1]));
         let email = user.email
         let username = user['cognito:username']
         return this.getUser(email, username);
+    }
+    async getUserById(id) {
+        return User.findById(id);
     }
     async getActiveRoom(userId) {
         const membership = await RoomMembership.findOne({ userId }).populate('roomId');
@@ -47,11 +49,6 @@ class MongoDataProvider {
     }
 
     async joinRoom(roomId, userId) {
-        // Проверяем, находится ли пользователь уже в какой-либо комнате
-        const existingMembership = await RoomMembership.findOne({ userId });
-        if (existingMembership) {
-            throw new Error('User is already in a room');
-        }
 
         const room = await Room.findById(roomId);
         if (!room) {
@@ -62,9 +59,13 @@ class MongoDataProvider {
         if (membersCount >= 10) {
             throw new Error('Room is full');
         }
+        const existingMembership = await RoomMembership.findOne({ userId, roomId });
 
-        const membership = new RoomMembership({ roomId, userId });
-        await membership.save();
+        if (!existingMembership) {
+            const membership = new RoomMembership({roomId, userId});
+            await membership.save();
+        }
+
     }
 
     async getUser(email, username) {

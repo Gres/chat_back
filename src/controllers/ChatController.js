@@ -1,9 +1,9 @@
 const WebSocket = require('ws');
-const MongoDataProvider = require('../db/MongoDataProvider');
-const Logger = require('../core/Logger');
+
 
 const MessageType = {
     GET_ACTIVE_ROOM: 'getActiveRoom',
+    WHO_AM_I: 'whoAmI',
     JOIN_ROOM: 'joinRoom',
     LEAVE_ROOM: 'leaveRoom',
     CREATE_ROOM: 'createRoom',
@@ -17,8 +17,8 @@ const MessageType = {
 };
 
 class ChatController {
-    constructor(server, logger = Logger) {
-        this.wss = new WebSocket.Server(server);
+    constructor(server, logger, MongoDataProvider) {
+        this.wss = server;
         this.dataProvider = MongoDataProvider;
         this.clients = new Map();
         this.logger = logger;
@@ -91,6 +91,9 @@ class ChatController {
             case MessageType.GET_ROOM_USERS:
                 await this.getRoomUsers(ws, data);
                 break;
+            case MessageType.WHO_AM_I:
+                await this.whoAmI(ws, data);
+                break;
             default:
                 this.sendMessage(ws, MessageType.ERROR, { error: 'Unknown command' }, MessageType.ERROR);
                 this.logger.log('Unknown command', 'error', '❓');
@@ -106,10 +109,12 @@ class ChatController {
             this.clients.set(ws, { userId: data.userId, roomId: data.roomId });
             this.clients.forEach((clientData, client) => {
                 if (client.readyState === WebSocket.OPEN && clientData.roomId === data.roomId) {
-                    this.sendMessage(client, MessageType.RESPONSE, { success: true,message: 'Joined room', data:{roomId: clientData.roomId, userId: data.userId} }, MessageType.JOIN_ROOM);
+                    this.sendMessage(client, MessageType.RESPONSE, { success: true,message: 'Joined room', data:{roomId: clientData.roomId, userId: clientData.userId} }, MessageType.JOIN_ROOM);
                 }
             });
-            await this.getActiveRoom(ws, data);
+            this.sendMessage(ws, MessageType.RESPONSE, { success: true,message: 'Joined room', data }, MessageType.JOIN_ROOM);
+
+            // await this.getActiveRoom(ws, data);
             this.logger.log(`User ${data.userId} joined room ${data.roomId}`, 'info', '🚪');
         } catch (error) {
             this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.JOIN_ROOM);
@@ -122,7 +127,7 @@ class ChatController {
             await this.dataProvider.leaveRoom(data.roomId, data.userId);
             this.clients.forEach((clientData, client) => {
                 if (client.readyState === WebSocket.OPEN && clientData.roomId === data.roomId) {
-                    this.sendMessage(client, MessageType.RESPONSE, { success: true,message:'Left room', data:{roomId: clientData.roomId, userId: data.userId} }, MessageType.LEAVE_ROOM);
+                    this.sendMessage(client, MessageType.RESPONSE, { success: true,message:'Left room', data:{roomId: clientData.roomId, userId: clientData.userId} }, MessageType.LEAVE_ROOM);
                 }
             });
             this.clients.set(ws, { userId: data.userId, roomId: null });
@@ -162,7 +167,7 @@ class ChatController {
                     this.sendMessage(client, MessageType.RESPONSE, { success: true, data: messages }, MessageType.SEND_MESSAGE);
                 }
             });
-
+            this.sendMessage(ws, MessageType.RESPONSE, { success: true, data: messages }, MessageType.SEND_MESSAGE);
             this.logger.log(`Message sent to room ${data.roomId} by user ${data.userId}`, 'info', '💬');
         } catch (error) {
             this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.SEND_MESSAGE);
@@ -207,6 +212,17 @@ class ChatController {
         }
     }
 
+    async whoAmI(ws, data) {
+        try {
+            const user = await this.dataProvider.getUserById(data.userId);
+            this.sendMessage(ws, MessageType.RESPONSE, { success: true, data:user }, MessageType.WHO_AM_I);
+            this.logger.log(`Requested user info for user ${data.userId}  ${user?.username}`, 'info', '👤');
+        } catch (error) {
+            this.sendMessage(ws, MessageType.ERROR, { error: error.message }, MessageType.WHO_AM_I);
+            this.logger.log(`Get user info failed: ${error.message}`, 'error', '🚫');
+        }
+    }
+
     async getMessages(ws, data) {
         try {
             const messages = await this.dataProvider.getMessages(data.roomId);
@@ -236,6 +252,7 @@ class ChatController {
         this.clients.delete(ws);
         this.logger.log('Connection closed', 'info', '🔌');
     }
+
 
     sendMessage(ws, type, data, action) {
         const message = { type, action, ...data };
