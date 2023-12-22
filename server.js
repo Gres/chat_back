@@ -14,7 +14,7 @@ if (!process.env.PORT) {
 }
 const PORT = process.env.PORT;
 let server;
-if (process.env.HTTPS) {
+if (process.env.HTTPS === 'true') {
     const privateKey = fs.readFileSync(process.env.SSL_KEY_PATH, 'utf8');
     const certificate = fs.readFileSync(process.env.SSL_CERT_PATH, 'utf8');
     const credentials = { key: privateKey, cert: certificate };

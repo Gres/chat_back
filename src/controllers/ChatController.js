@@ -17,7 +17,7 @@ const MessageType = {
 };
 
 class ChatController {
-    constructor(server, logger, MongoDataProvider) {
+    constructor(server, MongoDataProvider, logger) {
         this.wss = server;
         this.dataProvider = MongoDataProvider;
         this.clients = new Map();
