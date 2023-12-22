@@ -5,7 +5,7 @@ const ChatController = require('./src/controllers/ChatController.js');
 const connectToMongoDB = require('./src/db/mongoose');
 
 const MongoDataProvider = require('./src/db/MongoDataProvider');
-const Logger = require('/src/core/Logger');
+const Logger = require('./src/core/Logger');
 const {createServer} = require("http");
 connectToMongoDB();
 
@@ -20,7 +20,7 @@ if (process.env.HTTPS) {
     const credentials = { key: privateKey, cert: certificate };
     server = https.createServer(credentials);
     server.listen(PORT, () => {
-        console.log('HTTPS Server running on port 443');
+        console.log('HTTPS Server running on port ' + PORT + ' 🚀 ');
     });
 } else {
     server = createServer();
