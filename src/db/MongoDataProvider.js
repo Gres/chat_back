@@ -80,6 +80,12 @@ class MongoDataProvider {
         return newUser;
     }
     async createRoom(name, userId) {
+        //check if room exists with same name
+        const existingRoom = await Room.findOne({ name });
+        if (existingRoom) {
+            // throw new Error('User already exists');
+            return existingRoom
+        }
         const newRoom = new Room({ name, authorId: userId });
         await newRoom.save();
 

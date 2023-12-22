@@ -112,7 +112,6 @@ class ChatController {
                     this.sendMessage(client, MessageType.RESPONSE, { success: true,message: 'Joined room', data:{roomId: clientData.roomId, userId: clientData.userId} }, MessageType.JOIN_ROOM);
                 }
             });
-            this.sendMessage(ws, MessageType.RESPONSE, { success: true,message: 'Joined room', data }, MessageType.JOIN_ROOM);
 
             // await this.getActiveRoom(ws, data);
             this.logger.log(`User ${data.userId} joined room ${data.roomId}`, 'info', '🚪');
@@ -144,7 +143,9 @@ class ChatController {
             const newRoom = await this.dataProvider.createRoom(data.name, data.userId);
             this.clients.forEach((clientData, client) => {
                 if (client.readyState === WebSocket.OPEN) {
-                    this.sendMessage(client, MessageType.RESPONSE, { success: true, data: newRoom }, MessageType.CREATE_ROOM);
+                    this.sendMessage(client, MessageType.RESPONSE, { success: true, data: {
+                            roomId: newRoom._id,
+                        } }, MessageType.CREATE_ROOM);
                 }
             });
 
