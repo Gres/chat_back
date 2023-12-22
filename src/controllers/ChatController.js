@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const INACTIVITY_TIMEOUT = parseInt(process.env.INACTIVITY_TIMEOUT) || 300000; // 5 минут по умолчанию
 
 
 const MessageType = {
@@ -25,13 +26,31 @@ class ChatController {
 
         this.wss.on('connection', (ws) => {
             this.logger.log('New connection established', 'info', '🔗');
-            this.clients.set(ws, {});
+            this.clients.set(ws, { lastActivity: Date.now() });
 
-            ws.on('message', (message) => this.handleMessage(ws, message));
-            ws.on('close', () => this.handleClose(ws));
+            ws.on('message', (message) => {
+                this.clients.get(ws).lastActivity = Date.now();
+                this.handleMessage(ws, message).catch(error => {
+                    this.logger.log(`Error in handleMessage: ${error.message}`, 'error', '⚠️');
+                });
+            });
+            ws.on('close', () => this.handleClose(ws).catch(error => {
+                this.logger.log(`Error in handleClose: ${error.message}`, 'error', '⚠️');
+            }));
+        });
+
+        setInterval(() => this.checkClientActivity(), INACTIVITY_TIMEOUT);
+    }
+    checkClientActivity() {
+        const now = Date.now();
+        this.clients.forEach((clientData, client) => {
+            if (now - clientData.lastActivity > INACTIVITY_TIMEOUT) {
+                this.handleClose(client).catch(error => {
+                    this.logger.log(`Error during client activity check: ${error.message}`, 'error', '⚠️');
+                });
+            }
         });
     }
-
     async handleMessage(ws, message) {
         let data;
         try {
@@ -247,11 +266,17 @@ class ChatController {
     }
 
     async handleClose(ws) {
-        const clientInfo = this.clients.get(ws);
-        await this.leaveRoom(ws, clientInfo);
+        try {
+            const clientInfo = this.clients.get(ws);
+            if (clientInfo && clientInfo.roomId) {
+                await this.leaveRoom(ws, clientInfo);
+            }
 
-        this.clients.delete(ws);
-        this.logger.log('Connection closed', 'info', '🔌');
+            this.clients.delete(ws);
+            this.logger.log('Connection closed or client went offline', 'info', '🔌');
+        } catch (error) {
+            this.logger.log(`Error in handleClose: ${error.message}`, 'error', '⚠️');
+        }
     }
 
 
